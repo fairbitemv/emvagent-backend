@@ -1,0 +1,21 @@
+# Build output
+target/
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Claude
+.claude/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# Environment
+.env
+*.env
