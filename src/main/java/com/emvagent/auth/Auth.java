@@ -2,6 +2,8 @@ package com.emvagent.auth;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -113,7 +115,10 @@ class AuthService implements UserDetailsService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final com.emvagent.config.JwtService jwtService;
-    private final AuthenticationManager authenticationManager;
+
+    @Lazy
+    @Autowired
+    private AuthenticationManager authenticationManager;
 
     /**
      * Login — validates credentials, returns JWT token.

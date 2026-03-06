@@ -100,4 +100,4 @@ logging:
   level:
     com.emvagent: DEBUG
     org.springframework.kafka: INFO
-    org.springframework.security: INFO
+    org.springframework.security: DEBUG
