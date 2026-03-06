@@ -1,0 +1,46 @@
+# ══════════════════════════════════════════════════════════
+# LOCAL DEV profile — GCP/Kafka/BigQuery mock
+# Run with: mvn spring-boot:run -Dspring-boot.run.profiles=local
+# ══════════════════════════════════════════════════════════
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/emv_ai
+    username: emvagent
+    password: changeme
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop   # auto create tables locally
+    show-sql: true
+
+  kafka:
+    bootstrap-servers: localhost:9092
+
+  # Disable BigQuery / GCP for local
+  autoconfigure:
+    exclude:
+      - com.google.cloud.spring.autoconfigure.bigquery.GcpBigQueryAutoConfiguration
+
+  flyway:
+    enabled: false            # use ddl-auto instead locally
+
+gcp:
+  project-id: local-dev
+  bigquery:
+    dataset: local
+    feedback-table: feedback_approved
+    transactions-table: transaction_features
+
+ai:
+  service:
+    url: http://localhost:8000
+
+jwt:
+  secret: local-dev-secret-key-32-chars-min
+  expiration-ms: 86400000
+
+logging:
+  level:
+    com.emvagent: DEBUG
+    org.springframework.web: DEBUG

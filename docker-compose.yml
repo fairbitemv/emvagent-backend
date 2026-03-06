@@ -1,114 +1,44 @@
 version: '3.8'
 
-# ══════════════════════════════════════════════════════════
-# Fairbit EMV AI — Full Local Development Stack
-#
-# Services:
-#   1. java-backend     — Spring Boot API (port 8080)
-#   2. python-ai        — Python FastAPI AI microservice (port 8000)
-#   3. postgres         — Cloud SQL equivalent (port 5432)
-#   4. kafka            — Event streaming (port 9092)
-#   5. zookeeper        — Kafka dependency
-#   6. kafka-ui         — Kafka topic browser (port 8090)
-# ══════════════════════════════════════════════════════════
-
 services:
 
-  # ── Java Spring Boot Backend ────────────────────────────
-  java-backend:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      DB_HOST: postgres
-      DB_NAME: emv_ai
-      DB_USER: emvagent
-      DB_PASS: emvagent123
-      KAFKA_BOOTSTRAP: kafka:29092
-      AI_SERVICE_URL: http://python-ai:8000
-      GCP_PROJECT_ID: emvagent
-      JWT_SECRET: emvagent-dev-secret-key-minimum-32-chars
-    depends_on:
-      - postgres
-      - kafka
-      - python-ai
-    restart: unless-stopped
-    networks:
-      - emv-network
-
-  # ── Python FastAPI AI Microservice ──────────────────────
-  python-ai:
-    image: python-emv-ai:latest   # built from Python microservice Dockerfile
-    ports:
-      - "8000:8000"
-    environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-key.json
-      GCP_PROJECT_ID: emvagent
-      VERTEX_AI_LOCATION: us-central1
-      KAFKA_BOOTSTRAP: kafka:29092
-    volumes:
-      - ./gcp-key.json:/secrets/gcp-key.json:ro
-    depends_on:
-      - kafka
-    restart: unless-stopped
-    networks:
-      - emv-network
-
-  # ── PostgreSQL (Cloud SQL equivalent) ───────────────────
   postgres:
-    image: postgres:15-alpine
-    ports:
-      - "5432:5432"
+    image: postgres:15
+    container_name: emvagent-postgres
     environment:
       POSTGRES_DB: emv_ai
       POSTGRES_USER: emvagent
-      POSTGRES_PASSWORD: emvagent123
+      POSTGRES_PASSWORD: changeme
+    ports:
+      - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-    networks:
-      - emv-network
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emvagent -d emv_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # ── Zookeeper (Kafka dependency) ─────────────────────────
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
+    container_name: emvagent-zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-    networks:
-      - emv-network
+      ZOOKEEPER_TICK_TIME: 2000
 
-  # ── Kafka ─────────────────────────────────────────────────
   kafka:
     image: confluentinc/cp-kafka:7.5.0
+    container_name: emvagent-kafka
+    depends_on:
+      - zookeeper
     ports:
       - "9092:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    depends_on:
-      - zookeeper
-    networks:
-      - emv-network
-
-  # ── Kafka UI (browse topics in browser) ─────────────────
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    ports:
-      - "8090:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: emvagent-emv
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-    depends_on:
-      - kafka
-    networks:
-      - emv-network
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
 
 volumes:
-  postgres-data:
-
-networks:
-  emv-network:
-    driver: bridge
+  postgres_data:
