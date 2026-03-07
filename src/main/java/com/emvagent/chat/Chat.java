@@ -276,7 +276,7 @@ class ChatService {
         try {
             return aiServiceClient
                     .post()
-                    .uri("/chat")
+                    .uri("/api/v1/chat")
                     .bodyValue(Map.of(
                             "message",  message,
                             "context",  context,

@@ -11,7 +11,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create-drop   # auto create tables locally
+      ddl-auto: update   # auto create tables locally
     show-sql: true
 
   kafka:
