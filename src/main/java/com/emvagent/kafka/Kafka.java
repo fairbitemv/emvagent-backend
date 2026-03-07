@@ -19,6 +19,7 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@org.springframework.boot.autoconfigure.condition.ConditionalOnBean(com.google.cloud.bigquery.BigQuery.class)
 class BigQueryExportService {
 
     private final BigQuery bigQuery;

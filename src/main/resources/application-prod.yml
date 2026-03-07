@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  kafka:
+    bootstrap-servers: localhost:9092
+  autoconfigure:
+    exclude:
+      - com.google.cloud.spring.autoconfigure.bigquery.GcpBigQueryAutoConfiguration
+  flyway:
+    enabled: true
+
+gcp:
+  project-id: emvagent-ai-dev
+  bigquery:
+    dataset: local
+    feedback-table: feedback_approved
+    transactions-table: transaction_features
