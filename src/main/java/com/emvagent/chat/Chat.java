@@ -112,6 +112,7 @@ class ChatRequest {
     private String sessionId;   // null → create new session
     private String message;
     private Map<String, String> emvTags;  // optional raw EMV tags
+    private List<Map<String, String>> history;  // frontend-provided conversation history
 }
 
 @Data
@@ -184,12 +185,26 @@ class ChatService {
         messageRepository.save(userMsg);
 
         // ── Step 3: Build conversation context ────────────────────
-        List<ChatMessage> history = messageRepository
-                .findLastNBySessionId(session.getId(), 10);
-
-        List<Map<String, String>> context = history.stream()
-                .map(m -> Map.of("role", m.getRole().toLowerCase(), "content", m.getContent()))
-                .toList();
+        List<Map<String, String>> context;
+        if (request.getHistory() != null && !request.getHistory().isEmpty()) {
+            context = request.getHistory();
+        } else {
+            List<ChatMessage> dbHistory = messageRepository
+                    .findLastNBySessionId(session.getId(), 10);
+            context = dbHistory.stream()
+                    .map(m -> {
+                        String content = m.getContent();
+                        // Re-attach stored EMV tags to USER messages so follow-up
+                        // questions have full context (emvTags stored separately in DB)
+                        if ("USER".equals(m.getRole())
+                                && m.getEmvTags() != null
+                                && !m.getEmvTags().isBlank()) {
+                            content = content + "\n[EMV data: " + m.getEmvTags() + "]";
+                        }
+                        return Map.of("role", m.getRole().toLowerCase(), "content", content);
+                    })
+                    .toList();
+        }
 
         // ── Step 4: Call Python AI microservice ───────────────────
         AiResponse aiResult = callPythonAI(request.getMessage(), context, request.getEmvTags());
@@ -284,7 +299,7 @@ class ChatService {
                     ))
                     .retrieve()
                     .bodyToMono(AiResponse.class)
-                    .timeout(Duration.ofSeconds(30))
+                    .timeout(Duration.ofSeconds(120))
                     .block();
         } catch (Exception e) {
             log.error("Python AI call failed: {}", e.getMessage());

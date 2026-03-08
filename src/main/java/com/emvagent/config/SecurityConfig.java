@@ -37,7 +37,9 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(
                 "http://localhost:3000",
                 "http://localhost:3001",
-                "http://127.0.0.1:3000"
+                "http://127.0.0.1:3000",
+                "https://emvagent-frontend-829603232053.us-central1.run.app",
+                "https://chat.fairbit.com"
         ));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
