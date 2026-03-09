@@ -156,9 +156,14 @@ class AuthService implements UserDetailsService {
      * Login — validates credentials, returns JWT token.
      */
     public AuthResponse login(LoginRequest request) {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
-        );
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(request.getUsername(), request.getPassword())
+            );
+        } catch (org.springframework.security.core.AuthenticationException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED, "Invalid username or password");
+        }
         User user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -170,6 +175,7 @@ class AuthService implements UserDetailsService {
                 .role(user.getRole())
                 .organizationType(user.getOrganizationType() != null
                         ? user.getOrganizationType().name() : null)
+                .subscriptionStatus(user.getSubscriptionStatus())
                 .build();
     }
 
@@ -178,17 +184,27 @@ class AuthService implements UserDetailsService {
      */
     public AuthResponse register(RegisterRequest request) {
         if (userRepository.existsByUsername(request.getUsername())) {
-            throw new RuntimeException("Username already exists");
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "Username already exists");
         }
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email already registered");
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.CONFLICT, "Email already registered");
+        }
+
+        OrganizationType orgType;
+        try {
+            orgType = OrganizationType.valueOf(request.getOrganizationType());
+        } catch (IllegalArgumentException e) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Invalid organization type");
         }
 
         User user = User.builder()
                 .username(request.getUsername())
                 .password(passwordEncoder.encode(request.getPassword()))
                 .email(request.getEmail())
-                .organizationType(OrganizationType.valueOf(request.getOrganizationType()))
+                .organizationType(orgType)
                 .organizationName(request.getOrganizationName())
                 .role("USER")
                 .build();
@@ -202,6 +218,7 @@ class AuthService implements UserDetailsService {
                 .username(user.getUsername())
                 .role(user.getRole())
                 .organizationType(request.getOrganizationType())
+                .subscriptionStatus(user.getSubscriptionStatus())
                 .build();
     }
 
