@@ -1,5 +1,6 @@
 package com.emvagent.chat;
 
+import com.emvagent.auth.UsageCheckService;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -20,6 +21,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import reactor.util.retry.Retry;
 
 // ══════════════════════════════════════════════════════════════════
 // ENTITIES
@@ -160,6 +162,7 @@ class ChatService {
     private final ChatSessionRepository sessionRepository;
     private final ChatMessageRepository messageRepository;
     private final WebClient aiServiceClient;
+    private final UsageCheckService usageCheckService;
 
     /**
      * Process a chat message.
@@ -171,6 +174,9 @@ class ChatService {
      * 6. Return response
      */
     public ChatResponse chat(ChatRequest request, String username) {
+
+        // ── Subscription & usage check ────────────────────────────
+        usageCheckService.checkAndIncrementUsage(username);
 
         // ── Step 1: Get or create session ─────────────────────────
         ChatSession session = getOrCreateSession(request.getSessionId(), username);
@@ -300,6 +306,9 @@ class ChatService {
                     .retrieve()
                     .bodyToMono(AiResponse.class)
                     .timeout(Duration.ofSeconds(120))
+                    .retryWhen(Retry.backoff(3, Duration.ofSeconds(5))
+                            .filter(e -> e instanceof org.springframework.web.reactive.function.client.WebClientResponseException.ServiceUnavailable
+                                    || e instanceof org.springframework.web.reactive.function.client.WebClientResponseException.GatewayTimeout))
                     .block();
         } catch (Exception e) {
             log.error("Python AI call failed: {}", e.getMessage());
