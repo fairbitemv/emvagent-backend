@@ -59,6 +59,36 @@ class User {
 
     @Builder.Default
     private Instant createdAt = Instant.now();
+
+    // ── Billing fields ────────────────────────────────────────
+    private String stripeCustomerId;
+    private String stripeSubscriptionId;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private String subscriptionStatus = "INACTIVE";
+
+    private Instant subscriptionExpiresAt;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private int dailyChatCount = 0;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Instant dailyResetAt = Instant.now();
+
+    @Column(nullable = false)
+    @Builder.Default
+    private int weeklyChatCount = 0;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Instant weeklyResetAt = Instant.now();
+
+    @Column(nullable = false)
+    @Builder.Default
+    private int bonusCredits = 0;
 }
 
 enum OrganizationType {
@@ -74,6 +104,7 @@ interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByUsername(String username);
     boolean existsByUsername(String username);
     boolean existsByEmail(String email);
+    Optional<User> findByStripeSubscriptionId(String stripeSubscriptionId);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -102,6 +133,7 @@ class AuthResponse {
     private String username;
     private String role;
     private String organizationType;
+    private String subscriptionStatus;
 }
 
 // ══════════════════════════════════════════════════════════════════
