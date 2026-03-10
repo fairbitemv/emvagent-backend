@@ -89,6 +89,10 @@ class User {
     @Column(nullable = false)
     @Builder.Default
     private int bonusCredits = 0;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean cancelAtPeriodEnd = false;
 }
 
 enum OrganizationType {

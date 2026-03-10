@@ -65,6 +65,7 @@ class BillingStatus {
     private int weeklyLimit;
     private int bonusCredits;
     private Instant subscriptionExpiresAt;
+    private boolean cancelAtPeriodEnd;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -249,6 +250,7 @@ class BillingService implements UsageCheckService {
         status.setWeeklyLimit(billingConfig.getWeeklyLimit());
         status.setBonusCredits(user.getBonusCredits());
         status.setSubscriptionExpiresAt(user.getSubscriptionExpiresAt());
+        status.setCancelAtPeriodEnd(user.isCancelAtPeriodEnd());
         return status;
     }
 
@@ -353,6 +355,7 @@ class BillingService implements UsageCheckService {
         userRepository.findByStripeSubscriptionId(sub.getId()).ifPresent(user -> {
             user.setSubscriptionStatus("INACTIVE");
             user.setSubscriptionExpiresAt(null);
+            user.setCancelAtPeriodEnd(false);
             userRepository.save(user);
             log.info("Subscription cancelled for user: {}", user.getUsername());
         });
@@ -362,11 +365,13 @@ class BillingService implements UsageCheckService {
         userRepository.findByStripeSubscriptionId(sub.getId()).ifPresent(user -> {
             String status = mapStripeStatus(sub.getStatus());
             user.setSubscriptionStatus(status);
+            user.setCancelAtPeriodEnd(Boolean.TRUE.equals(sub.getCancelAtPeriodEnd()));
             if (sub.getCurrentPeriodEnd() != null) {
                 user.setSubscriptionExpiresAt(Instant.ofEpochSecond(sub.getCurrentPeriodEnd()));
             }
             userRepository.save(user);
-            log.info("Subscription updated for user: {} status: {}", user.getUsername(), status);
+            log.info("Subscription updated for user: {} status: {} cancelAtPeriodEnd: {}",
+                    user.getUsername(), status, user.isCancelAtPeriodEnd());
         });
     }
 
