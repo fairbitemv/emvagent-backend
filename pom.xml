@@ -101,6 +101,12 @@
             <version>2.34.0</version>
         </dependency>
 
+        <!-- Email -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- Stripe -->
         <dependency>
             <groupId>com.stripe</groupId>

@@ -99,6 +99,19 @@ billing:
   daily-limit: 50
   weekly-limit: 200
 
+# ── Email (SMTP) ─────────────────────────────────────────────
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:contact@fairbit.com}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 # ── App Base URL ─────────────────────────────────────────────
 app:
   base-url: ${APP_BASE_URL:http://localhost:3000}
