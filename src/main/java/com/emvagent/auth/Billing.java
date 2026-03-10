@@ -80,23 +80,40 @@ class BillingService implements UsageCheckService {
     private final UserRepository userRepository;
     private final BillingConfig billingConfig;
 
-    @Value("${stripe.secret-key}")
-    private String secretKey;
+    @Value("${stripe.mode:test}")
+    private String stripeMode;
 
-    @Value("${stripe.webhook-secret}")
-    private String webhookSecret;
+    @Value("${stripe.secret-key-live:sk_live_placeholder}")
+    private String secretKeyLive;
 
-    @Value("${stripe.price-id-monthly}")
-    private String priceIdMonthly;
+    @Value("${stripe.secret-key-test:sk_test_placeholder}")
+    private String secretKeyTest;
 
-    @Value("${stripe.price-id-credits}")
-    private String priceIdCredits;
+    @Value("${stripe.webhook-secret-live:whsec_live_placeholder}")
+    private String webhookSecretLive;
+
+    @Value("${stripe.webhook-secret-test:whsec_test_placeholder}")
+    private String webhookSecretTest;
+
+    @Value("${stripe.price-id-monthly-live:price_monthly_live_placeholder}")
+    private String priceIdMonthlyLive;
+
+    @Value("${stripe.price-id-monthly-test:price_monthly_test_placeholder}")
+    private String priceIdMonthlyTest;
+
+    @Value("${stripe.price-id-credits-live:price_credits_live_placeholder}")
+    private String priceIdCreditsLive;
+
+    @Value("${stripe.price-id-credits-test:price_credits_test_placeholder}")
+    private String priceIdCreditsTest;
 
     @Value("${app.base-url:http://localhost:3000}")
     private String baseUrl;
 
+    private boolean isLive() { return "live".equalsIgnoreCase(stripeMode); }
+
     private void initStripe() {
-        Stripe.apiKey = secretKey;
+        Stripe.apiKey = isLive() ? secretKeyLive : secretKeyTest;
     }
 
     /**
@@ -117,7 +134,7 @@ class BillingService implements UsageCheckService {
                         .setMode(SessionCreateParams.Mode.SUBSCRIPTION)
                         .setCustomer(customerId)
                         .addLineItem(SessionCreateParams.LineItem.builder()
-                                .setPrice(priceIdMonthly)
+                                .setPrice(isLive() ? priceIdMonthlyLive : priceIdMonthlyTest)
                                 .setQuantity(1L)
                                 .build())
                         .setSuccessUrl(baseUrl + "/billing/success?session_id={CHECKOUT_SESSION_ID}")
@@ -133,7 +150,7 @@ class BillingService implements UsageCheckService {
                         .setMode(SessionCreateParams.Mode.PAYMENT)
                         .setCustomer(customerId)
                         .addLineItem(SessionCreateParams.LineItem.builder()
-                                .setPrice(priceIdCredits)
+                                .setPrice(isLive() ? priceIdCreditsLive : priceIdCreditsTest)
                                 .setQuantity(1L)
                                 .build())
                         .setSuccessUrl(baseUrl + "/billing/success?session_id={CHECKOUT_SESSION_ID}")
@@ -186,7 +203,8 @@ class BillingService implements UsageCheckService {
         initStripe();
         Event event;
         try {
-            event = Webhook.constructEvent(payload, sigHeader, webhookSecret);
+            event = Webhook.constructEvent(payload, sigHeader,
+                    isLive() ? webhookSecretLive : webhookSecretTest);
         } catch (SignatureVerificationException e) {
             log.warn("Webhook signature verification failed: {}", e.getMessage());
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid webhook signature");
@@ -310,13 +328,27 @@ class BillingService implements UsageCheckService {
 
     private String ensureStripeCustomer(User user) throws StripeException {
         if (user.getStripeCustomerId() != null) {
-            return user.getStripeCustomerId();
+            try {
+                Customer.retrieve(user.getStripeCustomerId());
+                return user.getStripeCustomerId();
+            } catch (com.stripe.exception.InvalidRequestException e) {
+                log.warn("Stored Stripe customer {} not found in current mode ({}), creating new one: {}",
+                        user.getStripeCustomerId(), stripeMode, e.getMessage());
+                user.setStripeCustomerId(null);
+                userRepository.save(user);
+            }
         }
-        CustomerCreateParams params = CustomerCreateParams.builder()
-                .setEmail(user.getEmail())
+        String email = user.getEmail();
+        boolean validEmail = email != null && email.contains("@");
+        CustomerCreateParams.Builder builder = CustomerCreateParams.builder()
                 .setName(user.getUsername())
-                .putMetadata("username", user.getUsername())
-                .build();
+                .putMetadata("username", user.getUsername());
+        if (validEmail) {
+            builder.setEmail(email);
+        } else {
+            log.warn("Skipping invalid email for Stripe customer creation: user={} email={}", user.getUsername(), email);
+        }
+        CustomerCreateParams params = builder.build();
         Customer customer = Customer.create(params);
         user.setStripeCustomerId(customer.getId());
         userRepository.save(user);
@@ -326,7 +358,7 @@ class BillingService implements UsageCheckService {
     private void handleSubscriptionActivated(String username, String subscriptionId) {
         userRepository.findByUsername(username).ifPresent(user -> {
             try {
-                Stripe.apiKey = secretKey;
+                initStripe();
                 Subscription sub = Subscription.retrieve(subscriptionId);
                 long periodEnd = sub.getCurrentPeriodEnd();
                 user.setStripeSubscriptionId(subscriptionId);

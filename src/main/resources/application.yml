@@ -102,10 +102,15 @@ kafka:
 
 # ── Stripe ──────────────────────────────────────────────────
 stripe:
-  secret-key: ${STRIPE_SECRET_KEY:sk_test_placeholder}
-  webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_placeholder}
-  price-id-monthly: ${STRIPE_PRICE_ID_MONTHLY:price_monthly_placeholder}
-  price-id-credits: ${STRIPE_PRICE_ID_CREDITS:price_credits_placeholder}
+  mode: ${STRIPE_MODE:test}
+  secret-key-live: ${STRIPE_SECRET_KEY_LIVE:sk_live_placeholder}
+  secret-key-test: ${STRIPE_SECRET_KEY_TEST:sk_test_placeholder}
+  webhook-secret-live: ${STRIPE_WEBHOOK_SECRET_LIVE:whsec_live_placeholder}
+  webhook-secret-test: ${STRIPE_WEBHOOK_SECRET_TEST:whsec_test_placeholder}
+  price-id-monthly-live: ${STRIPE_PRICE_ID_MONTHLY_LIVE:price_monthly_live_placeholder}
+  price-id-monthly-test: ${STRIPE_PRICE_ID_MONTHLY_TEST:price_monthly_test_placeholder}
+  price-id-credits-live: ${STRIPE_PRICE_ID_CREDITS_LIVE:price_credits_live_placeholder}
+  price-id-credits-test: ${STRIPE_PRICE_ID_CREDITS_TEST:price_credits_test_placeholder}
 
 # ── Billing Limits ───────────────────────────────────────────
 billing:
