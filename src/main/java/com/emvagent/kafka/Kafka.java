@@ -38,7 +38,6 @@ class BigQueryExportService {
         log.info("Received approved feedback for BigQuery export: {}", payload.get("feedback_id"));
         try {
             exportToBigQuery(payload);
-            checkAndTriggerRetraining();
         } catch (Exception e) {
             log.error("BigQuery export failed for feedback {}: {}",
                     payload.get("feedback_id"), e.getMessage());
