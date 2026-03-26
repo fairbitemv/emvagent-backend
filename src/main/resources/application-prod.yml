@@ -17,6 +17,7 @@ spring:
 gcp:
   project-id: emvagent-ai-dev
   bigquery:
-    dataset: local
+    project: emvagent-ai-dev
+    dataset: emvagent
     feedback-table: feedback_approved
     transactions-table: transaction_features

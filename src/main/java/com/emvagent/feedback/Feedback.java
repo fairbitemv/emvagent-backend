@@ -2,8 +2,11 @@ package com.emvagent.feedback;
 
 import com.emvagent.kafka.KafkaProducer;
 import com.google.cloud.bigquery.BigQuery;
+import com.google.cloud.bigquery.FieldValueList;
 import com.google.cloud.bigquery.InsertAllRequest;
+import com.google.cloud.bigquery.TableResult;
 import com.google.cloud.bigquery.InsertAllResponse;
+import com.google.cloud.bigquery.QueryJobConfiguration;
 import com.google.cloud.bigquery.TableId;
 import jakarta.persistence.*;
 import lombok.*;
@@ -17,6 +20,9 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Repository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.reactive.function.client.WebClient;
+
+import java.time.Duration;
 
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -208,6 +214,29 @@ class CsvUploadResponse {
     private String labeledCsv;
     private String uploadedBy;
     private Instant uploadedAt;
+}
+
+@Data
+@Builder
+class BigQueryRecord {
+    private String feedbackId;
+    private String approvedLabel;
+    private String correctedAnswer;
+    private String emvTags;
+    private String reviewer;
+    private String approvedAt;
+    private String exportedAt;
+}
+
+@Data
+@Builder
+class BigQueryPageResponse {
+    private List<BigQueryRecord> items;
+    private long totalCount;
+    private int page;
+    private int pageSize;
+    @Builder.Default
+    private boolean bigQueryConnected = true;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -490,7 +519,7 @@ class FeedbackService {
                 if (assignedLabels[i] == null || assignedLabels[i].isEmpty()) continue;
                 CSVRecord rec = allRecords.get(i);
                 String emvTagsStr = serializeTagMap(extractTagMap(rec, hasMergedColumn, tagColumns, hasJsonColumn, jsonColumnName));
-                String insertId = sha256Hex(emvTagsStr);
+                String insertId = UUID.randomUUID().toString();
                 insertBuilder.addRow(insertId, Map.of(
                         "feedback_id",      insertId,
                         "approved_label",   assignedLabels[i],
@@ -612,6 +641,95 @@ class FeedbackService {
         }
     }
 
+    public BigQueryPageResponse getBigQueryRecords(int page, int size, String label, String reviewer) {
+        if (bigQuery == null) {
+            return BigQueryPageResponse.builder()
+                    .items(List.of()).totalCount(0).page(page).pageSize(size)
+                    .bigQueryConnected(false).build();
+        }
+
+        List<String> conditions = new ArrayList<>();
+        if (label != null && !label.isBlank())    conditions.add("approved_label = '" + label.replace("'", "") + "'");
+        if (reviewer != null && !reviewer.isBlank()) conditions.add("reviewer = '" + reviewer.replace("'", "") + "'");
+        String where = conditions.isEmpty() ? "" : "WHERE " + String.join(" AND ", conditions);
+
+        String dataset = "`" + bqProject + "." + bqDataset + ".feedback_approved`";
+
+        try {
+            TableResult countResult = bigQuery.query(QueryJobConfiguration.newBuilder(
+                    "SELECT COUNT(*) as total FROM " + dataset + " " + where).build());
+            long total = countResult.iterateAll().iterator().next().get("total").getLongValue();
+
+            TableResult dataResult = bigQuery.query(QueryJobConfiguration.newBuilder(
+                    "SELECT feedback_id, approved_label, corrected_answer, emv_tags, reviewer, approved_at, exported_at " +
+                    "FROM " + dataset + " " + where + " ORDER BY approved_at DESC " +
+                    "LIMIT " + size + " OFFSET " + (long) page * size).build());
+
+            List<BigQueryRecord> items = new ArrayList<>();
+            for (FieldValueList row : dataResult.iterateAll()) {
+                items.add(BigQueryRecord.builder()
+                        .feedbackId(row.get("feedback_id").getStringValue())
+                        .approvedLabel(row.get("approved_label").getStringValue())
+                        .correctedAnswer(row.get("corrected_answer").isNull() ? "" : row.get("corrected_answer").getStringValue())
+                        .emvTags(row.get("emv_tags").isNull() ? "" : row.get("emv_tags").getStringValue())
+                        .reviewer(row.get("reviewer").isNull() ? "" : row.get("reviewer").getStringValue())
+                        .approvedAt(row.get("approved_at").isNull() ? "" : row.get("approved_at").getStringValue())
+                        .exportedAt(row.get("exported_at").isNull() ? "" : row.get("exported_at").getStringValue())
+                        .build());
+            }
+
+            return BigQueryPageResponse.builder()
+                    .items(items).totalCount(total).page(page).pageSize(size).build();
+        } catch (Exception e) {
+            log.error("BigQuery query failed: {}", e.getMessage());
+            throw new RuntimeException("Failed to query BigQuery: " + e.getMessage(), e);
+        }
+    }
+
+    public List<String> getDistinctLabels() {
+        if (bigQuery == null) return List.of();
+        String dataset = "`" + bqProject + "." + bqDataset + ".feedback_approved`";
+        try {
+            TableResult result = bigQuery.query(QueryJobConfiguration.newBuilder(
+                    "SELECT DISTINCT approved_label FROM " + dataset +
+                    " WHERE approved_label IS NOT NULL ORDER BY approved_label").build());
+            List<String> labels = new ArrayList<>();
+            for (FieldValueList row : result.iterateAll()) {
+                labels.add(row.get("approved_label").getStringValue());
+            }
+            return labels;
+        } catch (Exception e) {
+            log.error("Failed to fetch distinct labels: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    public void deleteFromBigQuery(String feedbackId) {
+        if (bigQuery == null) throw new IllegalStateException("BigQuery not connected");
+        deleteBulkFromBigQuery(List.of(feedbackId));
+    }
+
+    public void deleteBulkFromBigQuery(List<String> feedbackIds) {
+        if (feedbackIds == null || feedbackIds.isEmpty()) return;
+        if (bigQuery == null) throw new IllegalStateException("BigQuery not connected");
+        String inClause = feedbackIds.stream()
+                .map(id -> "'" + id.replace("'", "") + "'")
+                .collect(java.util.stream.Collectors.joining(", "));
+        String table = "`" + bqProject + "." + bqDataset + ".feedback_approved`";
+        // DML DELETE is blocked on rows still in the streaming buffer (~90 min window).
+        // CREATE OR REPLACE TABLE AS SELECT reads the table (allowed during buffering)
+        // and atomically overwrites it, effectively deleting the excluded rows.
+        String sql = "CREATE OR REPLACE TABLE " + table + " AS "
+                + "SELECT * FROM " + table + " WHERE feedback_id NOT IN (" + inClause + ")";
+        try {
+            bigQuery.query(QueryJobConfiguration.newBuilder(sql).build());
+            log.info("Bulk deleted {} feedback records from BigQuery", feedbackIds.size());
+        } catch (Exception e) {
+            log.error("Failed to bulk delete from BigQuery: {}", e.getMessage());
+            throw new RuntimeException("Failed to bulk delete from BigQuery: " + e.getMessage(), e);
+        }
+    }
+
     public Map<String, Object> getStats() {
         return Map.of(
                 "pending",  feedbackRepository.countByStatus(FeedbackEntity.Status.PENDING),
@@ -644,6 +762,7 @@ class FeedbackService {
 class FeedbackController {
 
     private final FeedbackService feedbackService;
+    private final WebClient aiServiceClient;
 
     @PostMapping
     public ResponseEntity<FeedbackResponse> submit(
@@ -687,6 +806,51 @@ class FeedbackController {
     public ResponseEntity<RetrainResponse> triggerRetrain(
             @AuthenticationPrincipal UserDetails user) {
         return ResponseEntity.ok(feedbackService.triggerRetrain(user.getUsername()));
+    }
+
+    @PostMapping("/admin/start-training")
+    @PreAuthorize("hasAnyRole('EMV_EXPERT', 'ADMIN')")
+    public ResponseEntity<Map<String, Object>> startTraining(
+            @RequestBody Map<String, Object> params) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = aiServiceClient.post()
+                .uri("/api/v1/train")
+                .bodyValue(params)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .timeout(Duration.ofSeconds(300))
+                .block();
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/admin/bigquery-records")
+    @PreAuthorize("hasAnyRole('EMV_EXPERT', 'ADMIN')")
+    public ResponseEntity<BigQueryPageResponse> getBigQueryRecords(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String label,
+            @RequestParam(required = false) String reviewer) {
+        return ResponseEntity.ok(feedbackService.getBigQueryRecords(page, size, label, reviewer));
+    }
+
+    @GetMapping("/admin/bigquery-labels")
+    @PreAuthorize("hasAnyRole('EMV_EXPERT', 'ADMIN')")
+    public ResponseEntity<List<String>> getBigQueryLabels() {
+        return ResponseEntity.ok(feedbackService.getDistinctLabels());
+    }
+
+    @DeleteMapping("/admin/bigquery-records/{feedbackId}")
+    @PreAuthorize("hasAnyRole('EMV_EXPERT', 'ADMIN')")
+    public ResponseEntity<Void> deleteBigQueryRecord(@PathVariable String feedbackId) {
+        feedbackService.deleteFromBigQuery(feedbackId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/admin/bigquery-records")
+    @PreAuthorize("hasAnyRole('EMV_EXPERT', 'ADMIN')")
+    public ResponseEntity<Void> deleteBigQueryRecords(@RequestBody List<String> feedbackIds) {
+        feedbackService.deleteBulkFromBigQuery(feedbackIds);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/admin/upload-training-csv")

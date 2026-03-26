@@ -91,9 +91,10 @@ ai:
 
 # ── Google Cloud ────────────────────────────────────────────
 gcp:
-  project-id: ${GCP_PROJECT_ID:emvagent}
+  project-id: ${GCP_PROJECT_ID:emvagent-ai-dev}
   bigquery:
-    dataset: emv_payments
+    project: ${GCP_PROJECT_ID:emvagent-ai-dev}
+    dataset: emvagent
     feedback-table: feedback_approved
     transactions-table: transaction_features
 
