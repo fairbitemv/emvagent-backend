@@ -531,18 +531,28 @@ class FeedbackService {
                 ));
                 batchCount++;
                 if (batchCount % 500 == 0) {
-                    InsertAllResponse batchResponse = bigQuery.insertAll(insertBuilder.build());
-                    if (batchResponse.hasErrors()) {
-                        batchResponse.getInsertErrors().forEach((idx, errors) ->
-                                errors.forEach(e -> log.error("BigQuery insert error during CSV upload: {}", e.getMessage())));
+                    try {
+                        InsertAllResponse batchResponse = bigQuery.insertAll(insertBuilder.build());
+                        if (batchResponse.hasErrors()) {
+                            batchResponse.getInsertErrors().forEach((idx, errors) ->
+                                    errors.forEach(e -> log.error("BigQuery insert error during CSV upload: {}", e.getMessage())));
+                        }
+                    } catch (Exception e) {
+                        log.warn("BigQuery batch insert failed during CSV upload: {}", e.getMessage());
                     }
                     insertBuilder = InsertAllRequest.newBuilder(tableId);
                 }
             }
-            InsertAllResponse bqResponse = bigQuery.insertAll(insertBuilder.build());
-            if (bqResponse.hasErrors()) {
-                bqResponse.getInsertErrors().forEach((idx, errors) ->
-                        errors.forEach(e -> log.error("BigQuery insert error during CSV upload: {}", e.getMessage())));
+            if (batchCount % 500 != 0) {
+                try {
+                    InsertAllResponse bqResponse = bigQuery.insertAll(insertBuilder.build());
+                    if (bqResponse.hasErrors()) {
+                        bqResponse.getInsertErrors().forEach((idx, errors) ->
+                                errors.forEach(e -> log.error("BigQuery insert error during CSV upload: {}", e.getMessage())));
+                    }
+                } catch (Exception e) {
+                    log.warn("BigQuery final insert failed during CSV upload: {}", e.getMessage());
+                }
             }
         } else {
             log.warn("BigQuery not available — skipping BQ export for CSV upload");
