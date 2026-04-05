@@ -103,6 +103,12 @@ interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> {
     @Query("SELECT m FROM ChatMessage m WHERE m.sessionId = :sessionId ORDER BY m.createdAt DESC LIMIT :limit")
     List<ChatMessage> findLastNBySessionId(@Param("sessionId") UUID sessionId,
                                            @Param("limit") int limit);
+
+    @Query("SELECT m FROM ChatMessage m WHERE m.sessionId = :sessionId ORDER BY m.createdAt ASC LIMIT 1")
+    java.util.Optional<ChatMessage> findFirstBySessionId(@Param("sessionId") UUID sessionId);
+
+    @Query("SELECT m FROM ChatMessage m WHERE m.sessionId = :sessionId ORDER BY m.createdAt DESC LIMIT 1")
+    java.util.Optional<ChatMessage> findLastBySessionId(@Param("sessionId") UUID sessionId);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -148,6 +154,15 @@ class MessageItem {
     private String agentUsed;
     private String rootCauseDetected;
     private Instant createdAt;
+}
+
+@Data
+@Builder
+class SessionSummary {
+    private String sessionId;
+    private String title;
+    private String lastMessage;
+    private String updatedAt;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -328,6 +343,43 @@ class ChatService {
         private String rootCause;
         private List<String> recommendations;
     }
+
+    public List<SessionSummary> getSessions(String username) {
+        return sessionRepository.findByUsernameOrderByLastActivityAtDesc(username)
+            .stream()
+            .map(s -> {
+                String title = messageRepository.findFirstBySessionId(s.getId())
+                    .map(m -> m.getContent().length() > 60 ? m.getContent().substring(0, 60) + "…" : m.getContent())
+                    .orElse("New conversation");
+                String last = messageRepository.findLastBySessionId(s.getId())
+                    .map(m -> m.getContent().length() > 80 ? m.getContent().substring(0, 80) + "…" : m.getContent())
+                    .orElse("");
+                return SessionSummary.builder()
+                    .sessionId(s.getId().toString())
+                    .title(title)
+                    .lastMessage(last)
+                    .updatedAt(s.getLastActivityAt().toString())
+                    .build();
+            })
+            .toList();
+    }
+
+    public List<MessageItem> getMessageHistory(String sessionId, String username) {
+        UUID sid = UUID.fromString(sessionId);
+        sessionRepository.findById(sid)
+            .filter(s -> s.getUsername().equals(username))
+            .orElseThrow(() -> new RuntimeException("Session not found"));
+        return messageRepository.findBySessionIdOrderByCreatedAt(sid)
+            .stream()
+            .map(m -> MessageItem.builder()
+                .messageId(m.getId().toString())
+                .role(m.getRole().toLowerCase())
+                .content(m.getContent())
+                .agentUsed(m.getAgentUsed())
+                .createdAt(m.getCreatedAt())
+                .build())
+            .toList();
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -349,9 +401,22 @@ class ChatController {
     }
 
     @GetMapping("/session/{sessionId}")
-    public ResponseEntity<SessionHistoryResponse> getHistory(
+    public ResponseEntity<SessionHistoryResponse> getSessionHistory(
             @PathVariable UUID sessionId,
             @AuthenticationPrincipal UserDetails user) {
         return ResponseEntity.ok(chatService.getHistory(sessionId, user.getUsername()));
+    }
+
+    @GetMapping("/sessions")
+    public ResponseEntity<List<SessionSummary>> getSessions(
+            @AuthenticationPrincipal UserDetails user) {
+        return ResponseEntity.ok(chatService.getSessions(user.getUsername()));
+    }
+
+    @GetMapping("/history")
+    public ResponseEntity<List<MessageItem>> getHistory(
+            @RequestParam String sessionId,
+            @AuthenticationPrincipal UserDetails user) {
+        return ResponseEntity.ok(chatService.getMessageHistory(sessionId, user.getUsername()));
     }
 }
