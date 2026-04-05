@@ -52,6 +52,8 @@ class ChatSession {
 
     @Builder.Default
     private int messageCount = 0;
+
+    private String title; // user-defined rename; null = derive from first message
 }
 
 @Entity
@@ -348,9 +350,10 @@ class ChatService {
         return sessionRepository.findByUsernameOrderByLastActivityAtDesc(username)
             .stream()
             .map(s -> {
-                String title = messageRepository.findFirstBySessionId(s.getId())
-                    .map(m -> m.getContent().length() > 60 ? m.getContent().substring(0, 60) + "…" : m.getContent())
-                    .orElse("New conversation");
+                String title = s.getTitle() != null ? s.getTitle() :
+                    messageRepository.findFirstBySessionId(s.getId())
+                        .map(m -> m.getContent().length() > 60 ? m.getContent().substring(0, 60) + "…" : m.getContent())
+                        .orElse("New conversation");
                 String last = messageRepository.findLastBySessionId(s.getId())
                     .map(m -> m.getContent().length() > 80 ? m.getContent().substring(0, 80) + "…" : m.getContent())
                     .orElse("");
@@ -379,6 +382,24 @@ class ChatService {
                 .createdAt(m.getCreatedAt())
                 .build())
             .toList();
+    }
+
+    public void renameSession(String sessionId, String newTitle, String username) {
+        UUID sid = UUID.fromString(sessionId);
+        ChatSession session = sessionRepository.findById(sid)
+            .filter(s -> s.getUsername().equals(username))
+            .orElseThrow(() -> new RuntimeException("Session not found"));
+        session.setTitle(newTitle.trim().isEmpty() ? null : newTitle.trim());
+        sessionRepository.save(session);
+    }
+
+    public void deleteSession(String sessionId, String username) {
+        UUID sid = UUID.fromString(sessionId);
+        ChatSession session = sessionRepository.findById(sid)
+            .filter(s -> s.getUsername().equals(username))
+            .orElseThrow(() -> new RuntimeException("Session not found"));
+        messageRepository.deleteAll(messageRepository.findBySessionIdOrderByCreatedAt(sid));
+        sessionRepository.delete(session);
     }
 }
 
@@ -418,5 +439,22 @@ class ChatController {
             @RequestParam String sessionId,
             @AuthenticationPrincipal UserDetails user) {
         return ResponseEntity.ok(chatService.getMessageHistory(sessionId, user.getUsername()));
+    }
+
+    @PatchMapping("/sessions/{sessionId}/title")
+    public ResponseEntity<Void> renameSession(
+            @PathVariable String sessionId,
+            @RequestBody java.util.Map<String, String> body,
+            @AuthenticationPrincipal UserDetails user) {
+        chatService.renameSession(sessionId, body.getOrDefault("title", ""), user.getUsername());
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public ResponseEntity<Void> deleteSession(
+            @PathVariable String sessionId,
+            @AuthenticationPrincipal UserDetails user) {
+        chatService.deleteSession(sessionId, user.getUsername());
+        return ResponseEntity.ok().build();
     }
 }
