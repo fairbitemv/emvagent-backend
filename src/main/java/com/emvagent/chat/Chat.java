@@ -297,6 +297,7 @@ class ChatService {
     private ChatSession getOrCreateSession(String sessionId, String username) {
         if (sessionId != null) {
             return sessionRepository.findById(UUID.fromString(sessionId))
+                    .filter(s -> s.getUsername().equals(username))
                     .orElseGet(() -> createSession(username));
         }
         return createSession(username);
