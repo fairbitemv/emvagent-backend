@@ -140,7 +140,7 @@ class MagicLinkService {
         tokenRepository.save(token);
 
         SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromEmail);
+        message.setFrom("Fairbit <" + fromEmail + ">");
         message.setTo(email);
         message.setSubject("Your EMVAgent verification code");
         message.setText(
