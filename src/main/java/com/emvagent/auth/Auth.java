@@ -136,6 +136,7 @@ class RegisterRequest {
 class AuthResponse {
     private String token;
     private String username;
+    private String displayName;
     private String role;
     private String organizationType;
     private String subscriptionStatus;
@@ -177,6 +178,7 @@ class AuthService implements UserDetailsService {
         return AuthResponse.builder()
                 .token(token)
                 .username(user.getUsername())
+                .displayName(user.getOrganizationName())
                 .role(user.getRole())
                 .organizationType(user.getOrganizationType() != null
                         ? user.getOrganizationType().name() : null)
