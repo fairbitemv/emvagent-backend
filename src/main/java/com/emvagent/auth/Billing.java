@@ -281,6 +281,10 @@ class BillingService implements UsageCheckService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
+        if ("LIFETIME".equals(user.getSubscriptionStatus())) {
+            return; // unlimited access — no checks, no counter increments
+        }
+
         if (!"ACTIVE".equals(user.getSubscriptionStatus())) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
                     "{\"error\":\"SUBSCRIPTION_REQUIRED\"}");
