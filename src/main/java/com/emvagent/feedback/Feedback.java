@@ -1,6 +1,8 @@
 package com.emvagent.feedback;
 
 import com.emvagent.kafka.KafkaProducer;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.beans.factory.annotation.Value;
@@ -90,6 +92,7 @@ class FeedbackEntity {
     @Column(columnDefinition = "TEXT")
     private String notes;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "JSONB")
     private String emvTags;
 
