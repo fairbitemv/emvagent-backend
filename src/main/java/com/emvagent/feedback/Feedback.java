@@ -1,6 +1,11 @@
 package com.emvagent.feedback;
 
+import com.emvagent.chat.ChatMessage;
+import com.emvagent.chat.ChatMessageRepository;
 import com.emvagent.kafka.KafkaProducer;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.beans.factory.annotation.Value;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.FieldValueList;
 import com.google.cloud.bigquery.InsertAllRequest;
@@ -257,6 +262,21 @@ class FeedbackService {
     @Autowired(required = false)
     private BigQuery bigQuery;
 
+    @Autowired
+    private JavaMailSender mailSender;
+
+    @Autowired
+    private ChatMessageRepository chatMessageRepository;
+
+    @Value("${spring.mail.username:contact@fairbit.com}")
+    private String fromEmail;
+
+    private static final String[] ALERT_RECIPIENTS = {
+        "erdal.yazmaci@fairbit.com",
+        "yusuf@fairbit.com",
+        "ozgur.altuntas@fairbit.com"
+    };
+
     @org.springframework.beans.factory.annotation.Value("${gcp.bigquery.dataset:emvagent}")
     private String bqDataset;
 
@@ -283,6 +303,10 @@ class FeedbackService {
         FeedbackEntity saved = feedbackRepository.save(feedback);
         log.info("Feedback saved id={} user={}", saved.getId(), username);
 
+        if (saved.getRating() == FeedbackEntity.Rating.THUMBS_DOWN) {
+            sendThumbsDownAlert(saved, username, request.getSessionId());
+        }
+
         kafkaProducer.publishRawFeedback(Map.of(
                 "feedback_id",     saved.getId().toString(),
                 "message_id",      request.getMessageId(),
@@ -298,6 +322,42 @@ class FeedbackService {
                 .message("Thank you. An EMV expert will review your feedback shortly.")
                 .timestamp(saved.getSubmittedAt())
                 .build();
+    }
+
+    private void sendThumbsDownAlert(FeedbackEntity feedback, String username, String sessionId) {
+        try {
+            String aiAnswer = chatMessageRepository.findById(feedback.getMessageId())
+                    .map(ChatMessage::getContent)
+                    .orElse("(message content not found)");
+
+            List<ChatMessage> sessionMsgs = chatMessageRepository
+                    .findBySessionIdOrderByCreatedAt(UUID.fromString(sessionId));
+
+            String userQuestion = "(question not found)";
+            for (int i = 0; i < sessionMsgs.size(); i++) {
+                if (sessionMsgs.get(i).getId().equals(feedback.getMessageId()) && i > 0) {
+                    userQuestion = sessionMsgs.get(i - 1).getContent();
+                    break;
+                }
+            }
+
+            SimpleMailMessage mail = new SimpleMailMessage();
+            mail.setFrom("Fairbit <" + fromEmail + ">");
+            mail.setTo(ALERT_RECIPIENTS);
+            mail.setSubject("EMVAgent — Thumbs Down from " + username);
+            mail.setText(
+                "User: " + username + "\n" +
+                "Feedback ID: " + feedback.getId() + "\n" +
+                "Session ID: " + sessionId + "\n\n" +
+                "--- User Question ---\n" + userQuestion + "\n\n" +
+                "--- AI Response ---\n" + aiAnswer + "\n\n" +
+                "Review at: https://chat.fairbit.com/expert"
+            );
+            mailSender.send(mail);
+            log.info("Thumbs-down alert sent for feedback={} user={}", feedback.getId(), username);
+        } catch (Exception e) {
+            log.error("Failed to send thumbs-down alert: {}", e.getMessage());
+        }
     }
 
     /**

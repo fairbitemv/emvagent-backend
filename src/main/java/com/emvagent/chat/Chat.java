@@ -62,7 +62,7 @@ class ChatSession {
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-class ChatMessage {
+public class ChatMessage {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -99,7 +99,7 @@ interface ChatSessionRepository extends JpaRepository<ChatSession, UUID> {
 }
 
 @Repository
-interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> {
+public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> {
     List<ChatMessage> findBySessionIdOrderByCreatedAt(UUID sessionId);
 
     @Query("SELECT m FROM ChatMessage m WHERE m.sessionId = :sessionId ORDER BY m.createdAt DESC LIMIT :limit")
