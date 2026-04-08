@@ -120,6 +120,7 @@ class MagicLinkService {
 
     private static final Set<String> LIFETIME_EMAILS = Set.of(
         "erdal.yazmaci@gmail.com",
+        "erdalyazmaci@gmail.com",
         "ozgur.altuntas@fairbit.com",
         "emin.bahadir@fairbit.com",
         "yusuf@fairbit.com",
