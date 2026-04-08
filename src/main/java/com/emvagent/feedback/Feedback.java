@@ -1,7 +1,5 @@
 package com.emvagent.feedback;
 
-import com.emvagent.chat.ChatMessage;
-import com.emvagent.chat.ChatMessageRepository;
 import com.emvagent.kafka.KafkaProducer;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -149,6 +147,8 @@ class FeedbackRequest {
     private String correctedLabel;
     private String notes;
     private Map<String, String> emvTags;
+    private String userQuestion;     // populated by frontend on THUMBS_DOWN for email alert
+    private String aiAnswer;         // populated by frontend on THUMBS_DOWN for email alert
 }
 
 @Data
@@ -265,9 +265,6 @@ class FeedbackService {
     @Autowired
     private JavaMailSender mailSender;
 
-    @Autowired
-    private ChatMessageRepository chatMessageRepository;
-
     @Value("${spring.mail.username:contact@fairbit.com}")
     private String fromEmail;
 
@@ -304,7 +301,7 @@ class FeedbackService {
         log.info("Feedback saved id={} user={}", saved.getId(), username);
 
         if (saved.getRating() == FeedbackEntity.Rating.THUMBS_DOWN) {
-            sendThumbsDownAlert(saved, username, request.getSessionId());
+            sendThumbsDownAlert(saved, username, request.getUserQuestion(), request.getAiAnswer());
         }
 
         kafkaProducer.publishRawFeedback(Map.of(
@@ -324,33 +321,17 @@ class FeedbackService {
                 .build();
     }
 
-    private void sendThumbsDownAlert(FeedbackEntity feedback, String username, String sessionId) {
+    private void sendThumbsDownAlert(FeedbackEntity feedback, String username, String userQuestion, String aiAnswer) {
         try {
-            String aiAnswer = chatMessageRepository.findById(feedback.getMessageId())
-                    .map(ChatMessage::getContent)
-                    .orElse("(message content not found)");
-
-            List<ChatMessage> sessionMsgs = chatMessageRepository
-                    .findBySessionIdOrderByCreatedAt(UUID.fromString(sessionId));
-
-            String userQuestion = "(question not found)";
-            for (int i = 0; i < sessionMsgs.size(); i++) {
-                if (sessionMsgs.get(i).getId().equals(feedback.getMessageId()) && i > 0) {
-                    userQuestion = sessionMsgs.get(i - 1).getContent();
-                    break;
-                }
-            }
-
             SimpleMailMessage mail = new SimpleMailMessage();
             mail.setFrom("Fairbit <" + fromEmail + ">");
             mail.setTo(ALERT_RECIPIENTS);
             mail.setSubject("EMVAgent — Thumbs Down from " + username);
             mail.setText(
                 "User: " + username + "\n" +
-                "Feedback ID: " + feedback.getId() + "\n" +
-                "Session ID: " + sessionId + "\n\n" +
-                "--- User Question ---\n" + userQuestion + "\n\n" +
-                "--- AI Response ---\n" + aiAnswer + "\n\n" +
+                "Feedback ID: " + feedback.getId() + "\n\n" +
+                "--- User Question ---\n" + (userQuestion != null ? userQuestion : "(not provided)") + "\n\n" +
+                "--- AI Response ---\n" + (aiAnswer != null ? aiAnswer : "(not provided)") + "\n\n" +
                 "Review at: https://chat.fairbit.com/expert"
             );
             mailSender.send(mail);
