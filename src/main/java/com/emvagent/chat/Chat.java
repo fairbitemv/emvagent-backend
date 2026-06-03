@@ -323,7 +323,7 @@ class ChatService {
                     ))
                     .retrieve()
                     .bodyToMono(AiResponse.class)
-                    .timeout(Duration.ofSeconds(120))
+                    .timeout(Duration.ofSeconds(300))   // gemini-2.5-flash thinking-mode answers can take 60-120s
                     .retryWhen(Retry.backoff(3, Duration.ofSeconds(5))
                             .filter(e -> e instanceof org.springframework.web.reactive.function.client.WebClientResponseException.ServiceUnavailable
                                     || e instanceof org.springframework.web.reactive.function.client.WebClientResponseException.GatewayTimeout))
