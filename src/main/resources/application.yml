@@ -80,7 +80,7 @@ server:
 # ── JWT Security ────────────────────────────────────────────
 jwt:
   secret: ${JWT_SECRET:emvagent-super-secret-key-change-in-production}
-  expiration-ms: 86400000  # 24 hours
+  expiration-ms: 1296000000  # 15 days
 
 # ── Python AI Microservice ──────────────────────────────────
 ai:
