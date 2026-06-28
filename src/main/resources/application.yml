@@ -40,6 +40,12 @@ spring:
       auto-offset-reset: earliest
       properties:
         spring.json.trusted.packages: "com.emvagent.*"
+    # No Kafka broker is provisioned in prod (bootstrap defaults to localhost).
+    # Don't auto-start the consumer — avoids the constant reconnect-to-localhost
+    # log spam. Producer sends are async and harmless. The whole Kafka layer is
+    # slated for removal later.
+    listener:
+      auto-startup: false
 
   # ── File Upload ─────────────────────────────────────────
   servlet:
@@ -142,5 +148,6 @@ management:
 logging:
   level:
     com.emvagent: DEBUG
-    org.springframework.kafka: INFO
+    org.springframework.kafka: ERROR
+    org.apache.kafka: ERROR
     org.springframework.security: DEBUG
