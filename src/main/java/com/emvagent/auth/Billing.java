@@ -254,11 +254,28 @@ class BillingService implements UsageCheckService {
     }
 
     /**
+     * Lazily downgrade a promo-granted ACTIVE user once their promo window has
+     * passed. Stripe-independent: only acts on users.promo_expires_at, which is
+     * never set for Stripe-managed subscriptions (those stay null here).
+     */
+    private void expirePromoIfNeeded(User user) {
+        if ("ACTIVE".equals(user.getSubscriptionStatus())
+                && user.getPromoExpiresAt() != null
+                && Instant.now().isAfter(user.getPromoExpiresAt())) {
+            user.setSubscriptionStatus("INACTIVE");
+            user.setPromoExpiresAt(null);
+            userRepository.save(user);
+        }
+    }
+
+    /**
      * Get billing status for a user.
      */
     public BillingStatus getStatus(String username) {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        expirePromoIfNeeded(user);
 
         BillingStatus status = new BillingStatus();
         status.setSubscriptionStatus(user.getSubscriptionStatus());
@@ -284,6 +301,8 @@ class BillingService implements UsageCheckService {
         if ("LIFETIME".equals(user.getSubscriptionStatus())) {
             return; // unlimited access — no checks, no counter increments
         }
+
+        expirePromoIfNeeded(user);
 
         if (!"ACTIVE".equals(user.getSubscriptionStatus())) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,

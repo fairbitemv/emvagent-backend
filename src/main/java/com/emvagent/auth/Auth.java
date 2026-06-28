@@ -70,6 +70,10 @@ class User {
 
     private Instant subscriptionExpiresAt;
 
+    // Promo-grant expiry (e.g. 6-month free invite). Independent from Stripe's
+    // subscriptionExpiresAt — only set by promo redemption, null for Stripe users.
+    private Instant promoExpiresAt;
+
     @Column(nullable = false)
     @Builder.Default
     private int dailyChatCount = 0;
